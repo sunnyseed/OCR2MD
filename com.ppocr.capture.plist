@@ -5,25 +5,34 @@
     <key>Label</key>
     <string>com.ppocr.capture</string>
 
+    <!-- 指向 .app 壳的可执行文件，而非裸 python。
+         壳放在 ~/Applications（非 TCC 保护目录），用 launcher.c 编译生成，见 README。 -->
     <key>ProgramArguments</key>
     <array>
-        <string>/path/to/ppocr/.venv/bin/python</string>
-        <string>/path/to/ppocr/capture.py</string>
+        <string>/Users/你的用户名/Applications/PPOCRCapture.app/Contents/MacOS/ppocr-capture</string>
     </array>
-
-    <key>WorkingDirectory</key>
-    <string>/path/to/ppocr</string>
 
     <key>RunAtLoad</key>
     <true/>
 
+    <!-- 仅在非正常退出（exit code != 0）时重启；正常退出 / Ctrl+C 不再拉起 -->
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
 
+    <!-- 重启节流：两次启动至少间隔 300 秒，避免反复重载模型烧资源 -->
+    <key>ThrottleInterval</key>
+    <integer>300</integer>
+
+    <!-- 重要：日志不能放 ~/Documents/~/Desktop/~/Downloads 等 TCC 保护目录，
+         否则 launchd 在程序运行前就打不开日志 fd，spawn 失败报 EX_CONFIG(78)。
+         放 ~/Library/Logs/。 -->
     <key>StandardOutPath</key>
-    <string>/path/to/ppocr/capture.log</string>
+    <string>/Users/你的用户名/Library/Logs/ppocr/capture.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/path/to/ppocr/capture.err.log</string>
+    <string>/Users/你的用户名/Library/Logs/ppocr/capture.err.log</string>
 </dict>
 </plist>
