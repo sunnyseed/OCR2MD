@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <stdio.h>
 
-static const char *PROJ = "/Users/zhuym/Documents/101camp/ppocr";
+static const char *PROJ = "/Users/Lithos/Documents/GitHub/OCR2MD";
 
 int main(void) {
     if (chdir(PROJ) != 0) {
@@ -14,8 +14,8 @@ int main(void) {
         return 70;
     }
     char *const argv[] = {
-        "/Users/zhuym/Documents/101camp/ppocr/.venv/bin/python",
-        "/Users/zhuym/Documents/101camp/ppocr/capture.py",
+        "/Users/Lithos/Documents/GitHub/OCR2MD/.venv/bin/python",
+        "/Users/Lithos/Documents/GitHub/OCR2MD/capture.py",
         NULL,
     };
     execv(argv[0], argv);
