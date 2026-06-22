@@ -9,7 +9,7 @@
          壳放在 ~/Applications（非 TCC 保护目录），用 launcher.c 编译生成，见 README。 -->
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/你的用户名/Applications/PPOCRCapture.app/Contents/MacOS/ppocr-capture</string>
+        <string>/Users/Lithos/Applications/PPOCRCapture.app/Contents/MacOS/ppocr-capture</string>
     </array>
 
     <key>RunAtLoad</key>
@@ -30,9 +30,9 @@
          否则 launchd 在程序运行前就打不开日志 fd，spawn 失败报 EX_CONFIG(78)。
          放 ~/Library/Logs/。 -->
     <key>StandardOutPath</key>
-    <string>/Users/你的用户名/Library/Logs/ppocr/capture.log</string>
+    <string>/Users/Lithos/Library/Logs/ppocr/capture.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/你的用户名/Library/Logs/ppocr/capture.err.log</string>
+    <string>/Users/Lithos/Library/Logs/ppocr/capture.err.log</string>
 </dict>
 </plist>
