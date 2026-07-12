@@ -111,12 +111,12 @@ def run_capture():
                     parts.append(content)
 
         if not parts:
-            notify("未识别到内容")
+            notify("未识别到内容", sound=True)
             return
 
         md = "\n\n".join(parts)
         subprocess.run(["pbcopy"], input=md.encode("utf-8"), check=True)
-        notify(f"已复制到剪贴板（{len(parts)} 个区块）")
+        notify(f"已复制到剪贴板（{len(parts)} 个区块）", sound=True)
         print("\n--- 识别结果 ---")
         print(md)
         print("----------------\n")
@@ -125,9 +125,11 @@ def run_capture():
             os.unlink(tmp)
 
 
-def notify(msg: str):
+def notify(msg: str, sound: bool = False):
     script = f'display notification "{msg}" with title "PPOcr"'
     subprocess.run(["osascript", "-e", script])
+    if sound:
+        subprocess.Popen(["afplay", "/System/Library/Sounds/Glass.aiff"])
     print(msg)
 
 
