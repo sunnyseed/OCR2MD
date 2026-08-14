@@ -1,5 +1,6 @@
 """
-按 Cmd+Shift+1 触发截图区域选择，识别为 Markdown 并写入剪贴板。
+按 Ctrl+Shift+6 触发截图区域选择，识别为 Markdown 并写入剪贴板。
+兼容 Cmd+Shift+6，避免键位误按导致无响应。
 运行: uv run python capture.py
 停止: Ctrl+C
 """
@@ -7,6 +8,7 @@ import os
 import subprocess
 import tempfile
 import threading
+import time
 
 os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
 
@@ -31,9 +33,32 @@ def load_pipeline_bg():
             use_chart_recognition=False,
             use_seal_recognition=False,
         )
+    # 真实预热一次，避免首个快捷键触发时才下载/加载子模型导致长时间无响应。
+    notify("模型预热中，首次启动可能较慢")
+    warmup_start = time.time()
+    _warmup_pipeline()
+    warmup_cost = time.time() - warmup_start
     _pipeline_ready.set()
-    print("模型加载完成，Cmd+Shift+1 可以使用了")
-    notify("PPOcr 就绪，按 Cmd+Shift+1 开始截图")
+    print("模型加载完成，Ctrl+Shift+6（或 Cmd+Shift+6）可以使用了")
+    notify(f"PPOcr 就绪（预热 {warmup_cost:.1f}s），按 Ctrl+Shift+6 开始截图", sound=True)
+
+
+def _warmup_pipeline():
+    from PIL import Image
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        warmup_img = f.name
+    try:
+        # 用内存生成的空白图片触发一次完整推理链路，避免额外系统权限弹窗。
+        Image.new("RGB", (64, 64), (255, 255, 255)).save(warmup_img)
+        _pipeline.predict(warmup_img)
+    except Exception as e:
+        # 预热失败不阻断服务启动，但明确提示后续首轮识别可能变慢或失败。
+        notify(f"预热失败：{type(e).__name__}，可继续尝试截图")
+        print(f"[warmup] failed: {e}")
+    finally:
+        if os.path.exists(warmup_img):
+            os.unlink(warmup_img)
 
 
 def html_table_to_markdown(html: str) -> str:
@@ -92,11 +117,14 @@ def run_capture():
     ret = subprocess.run(["screencapture", "-i", "-s", tmp])
     if ret.returncode != 0 or not os.path.exists(tmp):
         print("截图已取消")
+        notify("截图已取消")
         return
 
     try:
         notify("识别中...")
+        infer_start = time.time()
         result = _pipeline.predict(tmp)
+        infer_cost = time.time() - infer_start
 
         parts = []
         for res in result:
@@ -118,18 +146,27 @@ def run_capture():
 
         md = "\n\n".join(parts)
         subprocess.run(["pbcopy"], input=md.encode("utf-8"), check=True)
-        notify(f"已复制到剪贴板（{len(parts)} 个区块）", sound=True)
+        notify(f"已复制到剪贴板（{len(parts)} 个区块，{infer_cost:.1f}s）", sound=True)
         print("\n--- 识别结果 ---")
         print(md)
         print("----------------\n")
+    except Exception as e:
+        notify(f"识别失败：{type(e).__name__}", sound=True)
+        print(f"[capture] failed: {e}")
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
 
 
+def _escape_applescript_text(text: str) -> str:
+    return text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+
+
 def notify(msg: str, sound: bool = False):
-    script = f'display notification "{msg}" with title "PPOcr"'
-    subprocess.run(["osascript", "-e", script])
+    safe = _escape_applescript_text(msg)
+    script = f'display notification "{safe}" with title "PPOcr"'
+    subprocess.run(["osascript", "-e", script], check=False)
+    # 通知中心可能静默第三方进程，关键节点用提示音兜底（不弹窗，避免抢焦点）。
     if sound:
         subprocess.Popen(["afplay", "/System/Library/Sounds/Glass.aiff"])
     print(msg)
@@ -137,12 +174,17 @@ def notify(msg: str, sound: bool = False):
 
 _running = False
 _run_lock = threading.Lock()
+_last_busy_notify = 0.0
 
 
 def on_activate():
-    global _running
+    global _running, _last_busy_notify
     with _run_lock:
         if _running:
+            now = time.time()
+            if now - _last_busy_notify > 2.0:
+                notify("上一次识别仍在进行，请稍候")
+                _last_busy_notify = now
             return
         _running = True
 
@@ -159,7 +201,10 @@ def on_activate():
 
 def main():
     # 先注册快捷键
-    hotkey = keyboard.GlobalHotKeys({"<cmd>+<shift>+1": on_activate})
+    hotkey = keyboard.GlobalHotKeys({
+        "<ctrl>+<shift>+6": on_activate,
+        "<cmd>+<shift>+6": on_activate,
+    })
     hotkey.start()
     print("快捷键已注册，等待模型加载...")
 
