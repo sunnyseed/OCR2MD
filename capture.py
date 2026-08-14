@@ -23,6 +23,8 @@ def load_pipeline_bg():
     from paddleocr import PPStructureV3
     with _pipeline_lock:
         _pipeline = PPStructureV3(
+            text_detection_model_name="PP-OCRv6_medium_det",
+            text_recognition_model_name="PP-OCRv6_medium_rec",
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_formula_recognition=False,

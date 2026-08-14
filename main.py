@@ -73,6 +73,8 @@ def main(img_path: str):
     from paddleocr import PPStructureV3
 
     pipeline = PPStructureV3(
+        text_detection_model_name="PP-OCRv6_medium_det",
+        text_recognition_model_name="PP-OCRv6_medium_rec",
         use_doc_orientation_classify=False,
         use_doc_unwarping=False,
         use_formula_recognition=False,
