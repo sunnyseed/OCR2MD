@@ -14,3 +14,6 @@ wheels/
 
 # macOS
 .DS_Store
+
+# 由 install.sh 从 .template 生成，含本机绝对路径，不要提交
+com.ppocr.capture.plist

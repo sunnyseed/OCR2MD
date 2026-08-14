@@ -1,6 +1,5 @@
 """
-按 Ctrl+Shift+6 触发截图区域选择，识别为 Markdown 并写入剪贴板。
-兼容 Cmd+Shift+6，避免键位误按导致无响应。
+按 Cmd+Shift+1 触发截图区域选择，识别为 Markdown 并写入剪贴板。
 运行: uv run python capture.py
 停止: Ctrl+C
 """
@@ -39,8 +38,8 @@ def load_pipeline_bg():
     _warmup_pipeline()
     warmup_cost = time.time() - warmup_start
     _pipeline_ready.set()
-    print("模型加载完成，Ctrl+Shift+6（或 Cmd+Shift+6）可以使用了")
-    notify(f"PPOcr 就绪（预热 {warmup_cost:.1f}s），按 Ctrl+Shift+6 开始截图", sound=True)
+    print("模型加载完成，Cmd+Shift+1 可以使用了")
+    notify(f"PPOcr 就绪（预热 {warmup_cost:.1f}s），按 Cmd+Shift+1 开始截图", sound=True)
 
 
 def _warmup_pipeline():
@@ -201,10 +200,7 @@ def on_activate():
 
 def main():
     # 先注册快捷键
-    hotkey = keyboard.GlobalHotKeys({
-        "<ctrl>+<shift>+6": on_activate,
-        "<cmd>+<shift>+6": on_activate,
-    })
+    hotkey = keyboard.GlobalHotKeys({"<cmd>+<shift>+1": on_activate})
     hotkey.start()
     print("快捷键已注册，等待模型加载...")
 

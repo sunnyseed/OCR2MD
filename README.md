@@ -5,7 +5,7 @@
 
 ## 1. 当前功能
 
-- 全局快捷键支持：Ctrl+Shift+6 和 Cmd+Shift+6
+- 全局快捷键：Cmd+Shift+1
 - 自动识别文字、标题、表格并输出 Markdown
 - 自动复制到剪贴板
 - 支持开机自启（macOS LaunchAgent）
@@ -74,7 +74,7 @@ uv run python capture.py
 
 ## 5. 如何使用
 
-1. 启动程序后，按 Ctrl+Shift+6 或 Cmd+Shift+6
+1. 启动程序后，按 Cmd+Shift+1
 2. 拖选截图区域
 3. 等待识别完成
 4. 结果自动复制到剪贴板
@@ -111,45 +111,42 @@ uv run python capture.py
 不要让 launchd 直接跑裸 python。
 全局热键权限按“应用身份”记账，稳定做法是用一个最小 .app 壳启动 capture.py。
 
-### 7.1 更新路径（重要）
+### 7.1 一条命令安装
 
-请先编辑 launcher.c，把以下三处改成你自己的实际路径：
-
-- PROJ
-- argv[0]（.venv/bin/python 的绝对路径）
-- argv[1]（capture.py 的绝对路径）
-
-如果你本地路径是 /Users/Lithos/...，可不改。
-
-另外，com.ppocr.capture.plist 里默认路径是 /Users/Lithos，其他用户名请先替换：
+在项目目录执行：
 
 ```bash
-sed -i '' "s|/Users/Lithos|$HOME|g" com.ppocr.capture.plist
+./install.sh
 ```
 
-### 7.2 构建并签名 .app
+它会自动完成：编译 .app 壳并签名 → 生成 LaunchAgent 配置 → 创建日志目录 → 加载服务。
+
+**不需要手工改任何路径。** 项目路径由 install.sh 在编译时注入 launcher.c，
+LaunchAgent 配置由 com.ppocr.capture.plist.template 替换 `__HOME__` 生成。
+仓库里的文件因此不含任何机器专属路径，也就不会在提交时互相覆盖。
+
+其他用法：
 
 ```bash
-APP="$HOME/Applications/PPOCRCapture.app"
-mkdir -p "$APP/Contents/MacOS"
-cc -O2 -o "$APP/Contents/MacOS/ppocr-capture" launcher.c
-cp Info.plist "$APP/Contents/Info.plist"
-xattr -cr "$APP"
-codesign --force --sign - --identifier com.ppocr.capture "$APP"
+./install.sh --rebuild-shell   # 强制重编译 .app 壳
+./install.sh --uninstall       # 卸载 LaunchAgent（保留壳和日志）
 ```
 
-### 7.3 安装 LaunchAgent
+注意 `--rebuild-shell` 会换掉 Mach-O 二进制，macOS 大概率视为新程序，
+**屏幕录制和辅助功能授权要重走一遍**。只有项目目录搬家了才需要它；
+改 capture.py 不需要重建壳。
+
+### 7.2 手动编译（不用 install.sh 时）
+
+launcher.c 要求编译期指定项目路径，否则直接报错：
 
 ```bash
-mkdir -p "$HOME/Library/Logs/ppocr"
-mkdir -p "$HOME/Library/LaunchAgents"
-cp com.ppocr.capture.plist "$HOME/Library/LaunchAgents/com.ppocr.capture.plist"
-launchctl bootout gui/$(id -u)/com.ppocr.capture 2>/dev/null || true
-launchctl bootstrap gui/$(id -u) "$HOME/Library/LaunchAgents/com.ppocr.capture.plist"
-launchctl kickstart -k gui/$(id -u)/com.ppocr.capture
+cc -O2 -DPROJ_DIR="\"$PWD\"" -o ppocr-capture launcher.c
 ```
 
-### 7.4 验证是否成功
+（编辑器/IDE 在不带这个参数时会报 `缺少 PROJ_DIR`，属预期行为，不是代码坏了。）
+
+### 7.3 验证是否成功
 
 ```bash
 launchctl print gui/$(id -u)/com.ppocr.capture | grep -E 'state|pid|last exit'
@@ -217,8 +214,9 @@ macOS 可能会静默某些进程通知。
 - main.py：单图转 Markdown（命令行）
 - capture.py：常驻进程（快捷键截图 + 识别 + 剪贴板）
 - test_hotkey.py：快捷键最小测试脚本
-- launcher.c：.app 壳的主可执行文件（Mach-O）
-- com.ppocr.capture.plist：LaunchAgent 配置模板
+- install.sh：一键安装/更新开机自启（见第 7 节）
+- launcher.c：.app 壳的主可执行文件（Mach-O），项目路径编译期注入
+- com.ppocr.capture.plist.template：LaunchAgent 配置模板，`__HOME__` 由 install.sh 替换
 - Info.plist：.app 元数据
 
 ## 11. 单图模式（可选）
