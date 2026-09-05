@@ -317,14 +317,31 @@ tiny 虽然快 8 倍，但中英混排下会把 `PP-OCR` 认成 `PP-〇CR`、`ma
 | 包 | 大小 | 说明 |
 | --- | --- | --- |
 | paddle | 424M | `libpaddle.so` 单个就 228M，必需 |
-| cv2 | 171M | 其中 57M 是 `libOrbbecSDK`（深度相机驱动，装了三个版本，无用） |
+| cv2 | 171M | 其中 58M 是 `libOrbbecSDK`（深度相机驱动，三个版本，本项目用不到但删不掉） |
 | scipy | 81M | 必需，版面分析与表格识别在用 |
 | pandas | 48M | paddlex 基础依赖 |
 | sklearn | 36M | 必需，`title_level.py` 在用 |
 | modelscope | 28M | paddlex 基础依赖 |
 
-理论可省约 185M（换 opencv-python-headless、删 `PyObjCTest`/`paddle/include`/`paddle/distributed`），
-但**对速度没有帮助**——拖慢启动的是文件数量而非体积。优先级低。
+#### 能省多少（已实测，结论是不值得动）
+
+| 项 | 大小 | 可行性 |
+| --- | --- | --- |
+| cv2 contrib → headless | **20M** | 需 `[tool.uv] override-dependencies` 绕过 paddlex 的 `==4.10.0.84` |
+| `paddle/distributed` | 14M | ❌ **不能删**。`paddle/__init__.py:173` 直接 `import paddle.distributed.fleet` |
+| `paddle/include` | 21M | ⚠️ 运行时不用（仅 `sysconfig.py` 引用，编译自定义算子才需要），但手删后 `uv sync` 会还原 |
+| `PyObjCTest` | 15M | ⚠️ 无人引用，同样会被 `uv sync` 还原 |
+
+**实际只能省约 20M，占 1028M 的 2%。**
+
+一个容易踩的坑：cv2 里那 58M `libOrbbecSDK` 看似是 contrib 版才有的累赘，
+但**实测 `opencv-python-headless==4.10.0.84` 同样打包了这三个 dylib**——
+headless 去掉的只是 GUI 窗口后端（`imshow` 那套），与深度相机 SDK 无关。
+（另：paddlex 与 paddleocr 都未使用任何 contrib 独有模块或 GUI 函数，
+所以换 headless 在功能上是可行的，只是不划算。）
+
+而且**省体积对速度没有帮助**——拖慢启动的是文件数量而非体积（见 12.1）。
+20M 的收益换绕过上游 pin 的维护负担，不值得。此项已排除。
 
 ### 12.6 表格场景下的模型对比
 
