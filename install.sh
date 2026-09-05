@@ -79,7 +79,7 @@ sleep 2
 if launchctl list | grep -q "$LABEL"; then
     echo
     echo "完成。服务已启动，模型加载+预热约需 1 分钟。"
-    echo "就绪后按 Cmd+Shift+1 截图识别。"
+    echo "就绪后按 Ctrl+Shift+6（或 Cmd+Shift+6）截图识别。"
     echo "看日志: tail -f ~/Library/Logs/ppocr/capture.log"
 else
     echo "服务未能启动，检查: launchctl print gui/$UID_NUM/$LABEL" >&2

@@ -17,3 +17,6 @@ wheels/
 
 # 由 install.sh 从 .template 生成，含本机绝对路径，不要提交
 com.ppocr.capture.plist
+
+# 截图原图样本（可能含未公开内容，仅供本机调优，绝不提交）
+sample/
