@@ -55,6 +55,11 @@ uv sync
 - paddleocr
 - paddlex[ocr]
 - pynput
+- numpy、opencv-contrib-python、pillow
+
+后三个本来就由 paddlepaddle/paddlex 传递引入，但项目代码直接 import 了它们
+（预处理用 cv2 + numpy、预热用 PIL），所以显式声明。不带版本号，由 uv 与
+paddlex 的 pin 取交集，不需要维护两处。显式声明不改变安装内容，`.venv` 体积不变。
 
 ## 4. 首次运行（推荐先手动跑通）
 

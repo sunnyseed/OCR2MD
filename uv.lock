@@ -1574,17 +1574,23 @@ name = "ppocr"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "numpy" },
+    { name = "opencv-contrib-python" },
     { name = "paddleocr" },
     { name = "paddlepaddle" },
     { name = "paddlex", extra = ["ocr"] },
+    { name = "pillow" },
     { name = "pynput" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "numpy" },
+    { name = "opencv-contrib-python" },
     { name = "paddleocr", specifier = ">=3.7.0" },
     { name = "paddlepaddle", specifier = ">=3.3.1" },
     { name = "paddlex", extras = ["ocr"], specifier = ">=3.7.1" },
+    { name = "pillow" },
     { name = "pynput", specifier = ">=1.8.2" },
 ]
 
