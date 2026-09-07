@@ -156,6 +156,9 @@ def table_markdowns(res, dark) -> list[str]:
 
     优先走检测框重建（能修好 pred_html 里的越界单元格）；重建判定不可靠时
     退回 pred_html，两条路的输出格式一致。
+
+    这里必须自己做括号归一化：网格路径的文本直接取自 rec_texts，不经过
+    parsing_res_to_markdown 里对 item.content 的那一次归一化。
     """
     out = []
     for table in res.get("table_res_list", []):
@@ -163,7 +166,8 @@ def table_markdowns(res, dark) -> list[str]:
         if dark is not None:
             ocr = table["table_ocr_pred"]
             rows = build_grid(table["cell_box_list"], ocr["rec_boxes"], ocr["rec_texts"], dark)
-        out.append(rows_to_markdown(rows) if rows else html_table_to_markdown(table["pred_html"]))
+        md = rows_to_markdown(rows) if rows else html_table_to_markdown(table["pred_html"])
+        out.append(normalize_brackets(md) if _NORMALIZE else md)
     return out
 
 
