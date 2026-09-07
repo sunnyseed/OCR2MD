@@ -15,9 +15,20 @@ from pathlib import Path
 
 os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
 
-import cv2
-import numpy as np
 from pynput import keyboard
+
+# OCR 逻辑（模型选型、去水印、表格重建、Markdown 拼装）统一由 main.py 提供。
+# 这里曾经复制过一份，结果 main.py 修好的表格越界单元格与括号归一化没同步过来，
+# 快捷键这条路一度落后三个提交——不要再复制。
+from main import (
+    DET_MODEL,
+    REC_MODEL,
+    block_content,
+    parsing_res_to_markdown,
+    preprocess,
+    table_markdowns,
+)
+from table_grid import dark_mask
 
 # Ctrl 与 Cmd 两个键位都注册，两种手感都能触发（PR #1 引入的做法，此处恢复）。
 # 选 6 的依据：本机 Cmd+Shift+2/4/5 已被截图功能占用（2=拷贝选区、4=选区截图、
@@ -35,54 +46,6 @@ _HOTKEY_LABEL = " 或 ".join(_label(h) for h in HOTKEYS)
 
 # 截图原图存档目录，供后续调优取样。内容可能含内部资料，已在 .gitignore 中排除。
 SAMPLE_DIR = Path(__file__).resolve().parent / "sample"
-
-# small 比 medium 快约 2.3 倍，纯文字与表格数字均无损（见 README 12.2 / 12.6）。
-DET_MODEL = "PP-OCRv6_small_det"
-REC_MODEL = "PP-OCRv6_small_rec"
-
-# small 唯一稳定的失分是全角/半角括号混用（如“营业收入（亿元)”），做一次归一化。
-# 只处理全角 ASCII 括号（U+FF08 等），不动【】《》〈〉——那些是 CJK 专有符号，
-# 换成半角会改变原意，不属于 OCR 误识别。
-_BRACKETS = str.maketrans({
-    "\uff08": "(", "\uff09": ")",   # （）
-    "\uff3b": "[", "\uff3d": "]",   # ［］
-    "\uff5b": "{", "\uff5d": "}",   # ｛｝
-})
-
-
-def normalize_brackets(text: str) -> str:
-    """把全角 ASCII 括号统一成半角。仅在使用 small 模型时启用。"""
-    return text.translate(_BRACKETS)
-
-
-# 换回 medium 时应关掉归一化：medium 的括号本来就准，归一化只会改坏原文。
-_NORMALIZE = "small" in REC_MODEL
-
-# 斜纹水印的笔画灰度集中在 221-240，正文在 50-145，白场拉伸即可抹掉水印。
-# 215 是实测出来的安全窗口（210-215）上沿：低于 205 会误伤正文，高于 220 水印回流。
-# 往高的一侧留余量——偏低是静默丢正文，偏高只是多几行看得见的垃圾。
-WHITE_POINT = 215
-_LEVEL_LUT = np.array(
-    [min(255, round(min(i, WHITE_POINT) / WHITE_POINT * 255)) for i in range(256)],
-    dtype=np.uint8,
-)
-
-
-def preprocess(img_path: str) -> str:
-    """白场拉伸去水印。返回处理后图片路径；失败时原样返回，不阻断识别。"""
-    try:
-        src = cv2.imread(img_path)
-        if src is None:
-            return img_path
-        gray = cv2.cvtColor(src, cv2.COLOR_BGR2GRAY)
-        out = cv2.cvtColor(cv2.LUT(gray, _LEVEL_LUT), cv2.COLOR_GRAY2BGR)
-        dst = f"{os.path.splitext(img_path)[0]}_pp.png"
-        cv2.imwrite(dst, out)
-        return dst
-    except Exception as e:
-        print(f"[preprocess] failed, 用原图继续: {e}")
-        return img_path
-
 
 def archive_sample(img_path: str) -> None:
     """把截图原图（未经预处理）存档，作为后续调优样本。失败不影响识别。"""
@@ -147,49 +110,6 @@ def _warmup_pipeline():
             os.unlink(warmup_img)
 
 
-def html_table_to_markdown(html: str) -> str:
-    from html.parser import HTMLParser
-
-    class Parser(HTMLParser):
-        def __init__(self):
-            super().__init__()
-            self.rows, self._row, self._cell, self._in = [], [], "", False
-
-        def handle_starttag(self, tag, attrs):
-            if tag == "tr":
-                self._row = []
-            elif tag in ("td", "th"):
-                self._in = True
-                self._cell = ""
-
-        def handle_endtag(self, tag):
-            if tag == "tr":
-                if self._row:
-                    self.rows.append(self._row)
-            elif tag in ("td", "th"):
-                self._row.append(self._cell.strip())
-                self._in = False
-
-        def handle_data(self, data):
-            if self._in:
-                self._cell += data
-
-    p = Parser()
-    p.feed(html)
-    rows = p.rows
-    if not rows:
-        return ""
-    widths = [max(len(r[i]) for r in rows if i < len(r)) for i in range(len(rows[0]))]
-
-    def fmt(row):
-        cells = [row[i] if i < len(row) else "" for i in range(len(rows[0]))]
-        return "| " + " | ".join(c.ljust(widths[i]) for i, c in enumerate(cells)) + " |"
-
-    lines = [fmt(rows[0]), "| " + " | ".join("-" * w for w in widths) + " |"]
-    lines += [fmt(r) for r in rows[1:]]
-    return "\n".join(lines)
-
-
 def run_capture():
     if not _pipeline_ready.is_set():
         notify("模型加载中，请稍候...")
@@ -212,25 +132,19 @@ def run_capture():
     try:
         notify("识别中...")
         infer_start = time.time()
+        dark = dark_mask(tmp)           # 线条校验要看原图，预处理会削弱浅色线
         processed = preprocess(tmp)
         result = _pipeline.predict(processed)
         infer_cost = time.time() - infer_start
 
         parts = []
+        blocks = 0
         for res in result:
-            for item in res.get("parsing_res_list", []):
-                label = item.label if hasattr(item, "label") else item.get("label", "")
-                content = item.content if hasattr(item, "content") else item.get("content", "")
-                if not content:
-                    continue
-                if _NORMALIZE:
-                    content = normalize_brackets(content)
-                if label == "table":
-                    parts.append(html_table_to_markdown(content))
-                elif label == "title":
-                    parts.append(f"## {content}")
-                else:
-                    parts.append(content)
+            parsing = res.get("parsing_res_list", [])
+            blocks += sum(1 for item in parsing if block_content(item))
+            text = parsing_res_to_markdown(parsing, table_markdowns(res, dark))
+            if text:
+                parts.append(text)
 
         if not parts:
             notify("未识别到内容", sound=True)
@@ -238,7 +152,7 @@ def run_capture():
 
         md = "\n\n".join(parts)
         subprocess.run(["pbcopy"], input=md.encode("utf-8"), check=True)
-        notify(f"已复制到剪贴板（{len(parts)} 个区块，{infer_cost:.1f}s）", sound=True)
+        notify(f"已复制到剪贴板（{blocks} 个区块，{infer_cost:.1f}s）", sound=True)
         print("\n--- 识别结果 ---")
         print(md)
         print("----------------\n")

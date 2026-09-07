@@ -32,7 +32,9 @@ def normalize_brackets(text: str) -> str:
 _NORMALIZE = "small" in REC_MODEL
 
 # 斜纹水印笔画灰度集中在 221-240，正文在 50-145，白场拉伸即可抹掉水印。
-# 215 是实测安全窗口（210-215）的上沿，详见 README 12.9。
+# 215 是实测安全窗口（210-215）的上沿，详见 README 12.9：低于 205 会误伤正文，
+# 高于 220 水印回流。往高的一侧留余量——偏低是静默丢正文，偏高只是多几行看得见
+# 的垃圾。
 WHITE_POINT = 215
 _LEVEL_LUT = np.array(
     [min(255, round(min(i, WHITE_POINT) / WHITE_POINT * 255)) for i in range(256)],
@@ -171,13 +173,22 @@ def table_markdowns(res, dark) -> list[str]:
     return out
 
 
+def block_label(item) -> str:
+    """parsing_res_list 的元素可能是对象也可能是 dict。"""
+    return item.label if hasattr(item, "label") else item.get("label", "")
+
+
+def block_content(item) -> str:
+    return item.content if hasattr(item, "content") else item.get("content", "")
+
+
 def parsing_res_to_markdown(parsing_res_list: list, tables: list[str] | None = None) -> str:
     """tables 为按顺序预先算好的表格 Markdown；不传则退回解析 item 自带的 HTML。"""
     pending = list(tables or [])
     parts = []
     for item in parsing_res_list:
-        label = item.label if hasattr(item, "label") else item.get("label", "")
-        content = item.content if hasattr(item, "content") else item.get("content", "")
+        label = block_label(item)
+        content = block_content(item)
         if not content:
             continue
         if _NORMALIZE:
