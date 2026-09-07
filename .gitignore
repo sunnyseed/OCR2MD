@@ -9,8 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
-# Runtime logs
+# Runtime logs and local OCR outputs (may contain internal material)
 *.log
+output/
 
 # macOS
 .DS_Store

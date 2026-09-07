@@ -55,26 +55,37 @@ def preprocess(img_path: str) -> str:
 
 
 class TableHTMLParser(HTMLParser):
+    """保留单元格的 rowspan/colspan，供 Markdown 展平时维持列对齐。"""
+
     def __init__(self):
         super().__init__()
         self.rows = []
         self._current_row = []
         self._current_cell = ""
+        self._current_rowspan = 1
+        self._current_colspan = 1
         self._in_cell = False
 
     def handle_starttag(self, tag, attrs):
         if tag == "tr":
             self._current_row = []
         elif tag in ("td", "th"):
+            attr = dict(attrs)
             self._in_cell = True
             self._current_cell = ""
+            self._current_rowspan = max(1, int(attr.get("rowspan", 1)))
+            self._current_colspan = max(1, int(attr.get("colspan", 1)))
+        elif tag == "br" and self._in_cell:
+            self._current_cell += "\n"
 
     def handle_endtag(self, tag):
         if tag == "tr":
             if self._current_row:
                 self.rows.append(self._current_row)
         elif tag in ("td", "th"):
-            self._current_row.append(self._current_cell.strip())
+            self._current_row.append(
+                (self._current_cell.strip(), self._current_rowspan, self._current_colspan)
+            )
             self._in_cell = False
 
     def handle_data(self, data):
@@ -82,23 +93,56 @@ class TableHTMLParser(HTMLParser):
             self._current_cell += data
 
 
+def _expand_table_spans(raw_rows: list) -> list[list[str]]:
+    """把 HTML 合并单元格展开为空白格；Markdown 本身不支持合并单元格。"""
+    rows = []
+    pending = {}  # column -> remaining rows occupied by a rowspan
+
+    for raw_row in raw_rows:
+        row = {column: "" for column in pending}
+        for column in list(pending):
+            pending[column] -= 1
+            if pending[column] == 0:
+                del pending[column]
+
+        column = 0
+        for text, rowspan, colspan in raw_row:
+            while column in row:
+                column += 1
+            row[column] = text
+            for offset in range(1, colspan):
+                row[column + offset] = ""
+            if rowspan > 1:
+                for offset in range(colspan):
+                    pending[column + offset] = max(pending.get(column + offset, 0), rowspan - 1)
+            column += colspan
+        rows.append(row)
+
+    width = max((max(row, default=-1) + 1 for row in rows), default=0)
+    return [[row.get(column, "") for column in range(width)] for row in rows]
+
+
+def _markdown_cell(value: str) -> str:
+    value = " ".join(value.split())
+    return value.replace("|", r"\|")
+
+
 def html_table_to_markdown(html: str) -> str:
     parser = TableHTMLParser()
     parser.feed(html)
-    rows = parser.rows
+    rows = _expand_table_spans(parser.rows)
     if not rows:
         return ""
 
-    col_widths = [max(len(str(row[i])) for row in rows if i < len(row)) for i in range(len(rows[0]))]
+    rows = [[_markdown_cell(cell) for cell in row] for row in rows]
+    col_widths = [max(3, max(len(row[i]) for row in rows)) for i in range(len(rows[0]))]
 
     def fmt_row(row):
-        cells = [str(row[i]) if i < len(row) else "" for i in range(len(rows[0]))]
-        return "| " + " | ".join(c.ljust(col_widths[i]) for i, c in enumerate(cells)) + " |"
+        return "| " + " | ".join(cell.ljust(col_widths[i]) for i, cell in enumerate(row)) + " |"
 
     lines = [fmt_row(rows[0])]
-    lines.append("| " + " | ".join("-" * w for w in col_widths) + " |")
-    for row in rows[1:]:
-        lines.append(fmt_row(row))
+    lines.append("| " + " | ".join("-" * width for width in col_widths) + " |")
+    lines.extend(fmt_row(row) for row in rows[1:])
     return "\n".join(lines)
 
 
