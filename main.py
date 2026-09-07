@@ -7,6 +7,8 @@ os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
 import cv2
 import numpy as np
 
+from table_grid import build_grid, dark_mask
+
 # small 比 medium 快约 2.3 倍，纯文字与表格数字均无损（见 README 12.2 / 12.6）。
 DET_MODEL = "PP-OCRv6_small_det"
 REC_MODEL = "PP-OCRv6_small_rec"
@@ -127,10 +129,7 @@ def _markdown_cell(value: str) -> str:
     return value.replace("|", r"\|")
 
 
-def html_table_to_markdown(html: str) -> str:
-    parser = TableHTMLParser()
-    parser.feed(html)
-    rows = _expand_table_spans(parser.rows)
+def rows_to_markdown(rows: list[list[str]]) -> str:
     if not rows:
         return ""
 
@@ -146,7 +145,31 @@ def html_table_to_markdown(html: str) -> str:
     return "\n".join(lines)
 
 
-def parsing_res_to_markdown(parsing_res_list: list) -> str:
+def html_table_to_markdown(html: str) -> str:
+    parser = TableHTMLParser()
+    parser.feed(html)
+    return rows_to_markdown(_expand_table_spans(parser.rows))
+
+
+def table_markdowns(res, dark) -> list[str]:
+    """按 table_res_list 顺序给出每张表的 Markdown。
+
+    优先走检测框重建（能修好 pred_html 里的越界单元格）；重建判定不可靠时
+    退回 pred_html，两条路的输出格式一致。
+    """
+    out = []
+    for table in res.get("table_res_list", []):
+        rows = []
+        if dark is not None:
+            ocr = table["table_ocr_pred"]
+            rows = build_grid(table["cell_box_list"], ocr["rec_boxes"], ocr["rec_texts"], dark)
+        out.append(rows_to_markdown(rows) if rows else html_table_to_markdown(table["pred_html"]))
+    return out
+
+
+def parsing_res_to_markdown(parsing_res_list: list, tables: list[str] | None = None) -> str:
+    """tables 为按顺序预先算好的表格 Markdown；不传则退回解析 item 自带的 HTML。"""
+    pending = list(tables or [])
     parts = []
     for item in parsing_res_list:
         label = item.label if hasattr(item, "label") else item.get("label", "")
@@ -156,7 +179,7 @@ def parsing_res_to_markdown(parsing_res_list: list) -> str:
         if _NORMALIZE:
             content = normalize_brackets(content)
         if label == "table":
-            parts.append(html_table_to_markdown(content))
+            parts.append(pending.pop(0) if pending else html_table_to_markdown(content))
         elif label == "title":
             parts.append(f"## {content}")
         else:
@@ -177,6 +200,7 @@ def main(img_path: str):
         use_seal_recognition=False,
     )
 
+    dark = dark_mask(img_path)          # 线条校验要看原图，预处理会削弱浅色线
     processed = preprocess(img_path)
     try:
         result = pipeline.predict(processed)
@@ -187,7 +211,7 @@ def main(img_path: str):
                 print("未检测到任何内容")
                 continue
 
-            md = parsing_res_to_markdown(parsing)
+            md = parsing_res_to_markdown(parsing, table_markdowns(res, dark))
             print(md)
 
             # 输出仍按原图路径命名，预处理产物只是中间文件
