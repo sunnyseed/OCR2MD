@@ -15,7 +15,6 @@ from pathlib import Path
 
 os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
 
-from pynput import keyboard
 
 # OCR 逻辑（模型选型、去水印、表格重建、Markdown 拼装）统一由 main.py 提供。
 # 这里曾经复制过一份，结果 main.py 修好的表格越界单元格与括号归一化没同步过来，
@@ -28,21 +27,9 @@ from main import (
     preprocess,
     table_markdowns,
 )
+from hotkey import HOTKEY_LABEL, HotkeyListener
 from table_grid import dark_mask
 
-# Ctrl 与 Cmd 两个键位都注册，两种手感都能触发（PR #1 引入的做法，此处恢复）。
-# 选 6 的依据：本机 Cmd+Shift+2/4/5 已被截图功能占用（2=拷贝选区、4=选区截图、
-# 5=截屏选项），6 空闲——系统默认是 Touch Bar 截图，而 Mac14,5 无 Touch Bar。
-# 若与第三方工具（Raycast/Magnet 的绑定无法程序化枚举）冲突，改成 7/8/9/0——
-# 这几个完全没有系统默认，比 6 少一层依赖假设。
-HOTKEYS = ["<ctrl>+<shift>+6", "<cmd>+<shift>+6"]
-
-
-def _label(hk: str) -> str:
-    return hk.replace("<ctrl>", "Ctrl").replace("<cmd>", "Cmd").replace("<shift>", "Shift")
-
-
-_HOTKEY_LABEL = " 或 ".join(_label(h) for h in HOTKEYS)
 
 # 截图原图存档目录，供后续调优取样。内容可能含内部资料，已在 .gitignore 中排除。
 SAMPLE_DIR = Path(__file__).resolve().parent / "sample"
@@ -88,8 +75,8 @@ def load_pipeline_bg():
     _warmup_pipeline()
     warmup_cost = time.time() - warmup_start
     _pipeline_ready.set()
-    print(f"模型加载完成，{_HOTKEY_LABEL} 可以使用了")
-    notify(f"PPOcr 就绪（预热 {warmup_cost:.1f}s），按 {_HOTKEY_LABEL} 开始截图", sound=True)
+    print(f"模型加载完成，{HOTKEY_LABEL} 可以使用了")
+    notify(f"PPOcr 就绪（预热 {warmup_cost:.1f}s），按 {HOTKEY_LABEL} 开始截图", sound=True)
 
 
 def _warmup_pipeline():
@@ -209,7 +196,7 @@ def on_activate():
 
 def main():
     # 先注册快捷键
-    hotkey = keyboard.GlobalHotKeys({hk: on_activate for hk in HOTKEYS})
+    hotkey = HotkeyListener(on_activate)
     hotkey.start()
     print("快捷键已注册，等待模型加载...")
 
