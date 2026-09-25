@@ -5,7 +5,8 @@
 
 ## 1. 当前功能
 
-- 全局快捷键：Ctrl+Shift+6，同时兼容 Cmd+Shift+6（在 `capture.py` 的 `HOTKEYS` 常量中配置）
+- 全局快捷键：Ctrl+Shift+6，同时兼容 Cmd+Shift+6（在 `hotkey.py` 中配置）
+- 支持鼠标键触发：在 Logi Options+ 等鼠标软件里把按键映射成上述快捷键即可（见 5.1）
 - 自动识别文字、标题、表格并输出 Markdown
 - 自动复制到剪贴板
 - 支持开机自启（macOS LaunchAgent）
@@ -90,6 +91,19 @@ uv run python capture.py
 提示说明：
 - 如果你取消截图，会提示“截图已取消”
 - 如果当前识别未结束又按了快捷键，会提示“上一次识别仍在进行，请稍候”
+
+### 5.1 用鼠标键触发（Logi Options+）
+
+1. 打开 Logi Options+，选中鼠标，点要用的按键（如拇指侧键）
+2. 动作选「键盘快捷键」，在输入框里按下 Cmd+Shift+6（或 Ctrl+Shift+6）
+3. 不用重启 capture.py，按一下鼠标键即可触发截图
+
+可以先跑 `uv run python test_hotkey.py`，10 秒内按鼠标键，看到“快捷键触发成功”就说明映射生效。
+
+原理说明：Logi Options+ 模拟快捷键时，只发一个带 Cmd+Shift 标志的「6」按下事件，
+不会单独发 Cmd、Shift 的按下事件。pynput 自带的 `GlobalHotKeys` 要先收到修饰键按下
+才算组合键，所以认不出鼠标。`hotkey.py` 改为在按下 6 时直接读取该事件携带的修饰键
+标志，键盘和鼠标都能触发。其他鼠标/改键软件（BetterTouchTool、Karabiner 等）同理。
 
 ## 6. 必须授权的系统权限
 
@@ -198,6 +212,10 @@ launchctl bootout gui/$(id -u)/com.ppocr.capture
 再看错误日志是否有：
 - This process is not trusted!
 
+如果**键盘能触发、鼠标键不能**：
+- 先用 `test_hotkey.py` 确认鼠标键确实发出了 Cmd+Shift+6（见 5.1）
+- 确认 Logi Options+ 里映射的是当前应用生效的配置（它支持按应用单独设置按键）
+
 ### 9.2 两次识别间隔很长
 
 常见原因：
@@ -223,7 +241,8 @@ macOS 可能会静默某些进程通知。
 
 - main.py：单图转 Markdown（命令行）
 - capture.py：常驻进程（快捷键截图 + 识别 + 剪贴板）
-- test_hotkey.py：快捷键最小测试脚本
+- hotkey.py：全局快捷键监听（按事件自带的修饰键标志匹配，兼容鼠标映射），capture.py 与 test_hotkey.py 共用
+- test_hotkey.py：快捷键最小测试脚本，也可用来验证鼠标键映射
 - install.sh：一键安装/更新开机自启（见第 7 节）
 - launcher.c：.app 壳的主可执行文件（Mach-O），项目路径编译期注入
 - com.ppocr.capture.plist.template：LaunchAgent 配置模板，`__HOME__` 由 install.sh 替换
